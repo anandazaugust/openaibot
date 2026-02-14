@@ -1,34 +1,47 @@
-from fastapi import FastAPI
+import os
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from azure.identity import DefaultAzureCredential
-from azure.ai.projects import AIProjectClient
+from openai import OpenAI
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 
 app = FastAPI()
 
-# Request model
-class ChatRequest(BaseModel):
-    question: str
+# Environment Variables
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
 
-myEndpoint = "https://foundry112.services.ai.azure.com/api/projects/proj-default"
+if not AZURE_OPENAI_ENDPOINT or not AZURE_OPENAI_DEPLOYMENT:
+    raise Exception("Missing required environment variables.")
 
-project_client = AIProjectClient(
-    endpoint=myEndpoint,
-    credential=DefaultAzureCredential(),
+# Managed Identity Authentication
+token_provider = get_bearer_token_provider(
+    DefaultAzureCredential(),
+    "https://cognitiveservices.azure.com/.default"
 )
 
-myAgent = "agent-test"
-agent = project_client.agents.get(agent_name=myAgent)
+client = OpenAI(
+    base_url=f"{AZURE_OPENAI_ENDPOINT}/openai/v1/",
+    api_key=token_provider
+)
 
-openai_client = project_client.get_openai_client()
+class ChatRequest(BaseModel):
+    message: str
 
 @app.post("/chat")
-def chat(request: ChatRequest):
-    response = openai_client.responses.create(
-        input=[{"role": "user", "content": request.question}],
-        extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
-    )
+async def chat(request: ChatRequest):
+    try:
+        response = client.chat.completions.create(
+            model=AZURE_OPENAI_DEPLOYMENT,
+            messages=[
+                {"role": "system", "content": "You are an enterprise AI assistant."},
+                {"role": "user", "content": request.message}
+            ],
+            temperature=0.7,
+        )
 
-    return {
-        "question": request.question,
-        "answer": response.output_text
-    }
+        return {
+            "reply": response.choices[0].message.content
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
