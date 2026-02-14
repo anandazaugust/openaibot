@@ -35,8 +35,7 @@ async def chat(request: ChatRequest):
             messages=[
                 {"role": "system", "content": "You are an enterprise AI assistant."},
                 {"role": "user", "content": request.message}
-            ],
-            temperature=0.7,
+            ]
         )
 
         return {
