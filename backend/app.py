@@ -1,9 +1,13 @@
-# Before running the sample:
-#    pip install --pre azure-ai-projects>=2.0.0b1
-#    pip install azure-identity
-
+from fastapi import FastAPI
+from pydantic import BaseModel
 from azure.identity import DefaultAzureCredential
 from azure.ai.projects import AIProjectClient
+
+app = FastAPI()
+
+# Request model
+class ChatRequest(BaseModel):
+    question: str
 
 myEndpoint = "https://foundry112.services.ai.azure.com/api/projects/proj-default"
 
@@ -13,17 +17,18 @@ project_client = AIProjectClient(
 )
 
 myAgent = "agent-test"
-# Get an existing agent
 agent = project_client.agents.get(agent_name=myAgent)
-print(f"Retrieved agent: {agent.name}")
 
 openai_client = project_client.get_openai_client()
 
-# Reference the agent to get a response
-response = openai_client.responses.create(
-    input=[{"role": "user", "content": "Tell me what you can help with."}],
-    extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
-)
+@app.post("/chat")
+def chat(request: ChatRequest):
+    response = openai_client.responses.create(
+        input=[{"role": "user", "content": request.question}],
+        extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
+    )
 
-print(f"Response output: {response.output_text}")
-
+    return {
+        "question": request.question,
+        "answer": response.output_text
+    }
